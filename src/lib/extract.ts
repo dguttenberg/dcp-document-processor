@@ -87,7 +87,7 @@ export async function extractFromPdf(fileBuffer: Buffer): Promise<ExtractionResu
   console.log(`[extract] Sending PDF to Claude (${(base64.length / 1024 / 1024).toFixed(1)} MB base64)`)
 
   const msg = await getAnthropic().messages.create({
-    model: 'claude-sonnet-4-5-20250514',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 8192,
     messages: [{
       role: 'user',
@@ -113,7 +113,7 @@ export async function extractFromText(text: string): Promise<ExtractionResult> {
   console.log(`[extract] Sending ${truncated.length} chars of text to Claude`)
 
   const msg = await getAnthropic().messages.create({
-    model: 'claude-sonnet-4-5-20250514',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 8192,
     messages: [{
       role: 'user',

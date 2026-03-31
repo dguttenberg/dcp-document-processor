@@ -5,7 +5,7 @@ import { extractFromPdf, extractFromText } from '../lib/extract'
 import { seedFromExtraction, markDocumentError } from '../lib/seed'
 import type { ProcessRequest } from '../lib/types'
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
+const MAX_FILE_BYTES = 20 * 1024 * 1024 // 20 MB — matches Supabase Storage limit
 
 // Multer for multipart file uploads (stored in memory)
 const upload = multer({
@@ -89,10 +89,10 @@ async function handler(req: Request, res: Response) {
     // 3. Size guard
     if (fileBuffer.length > MAX_FILE_BYTES) {
       const sizeMB = (fileBuffer.length / 1024 / 1024).toFixed(1)
-      await markDocumentError(documentId, `File is ${sizeMB} MB — exceeds 10 MB processing limit`)
+      await markDocumentError(documentId, `File is ${sizeMB} MB — exceeds 20 MB processing limit`)
       return res.status(413).json({
         success: false,
-        error: `File is ${sizeMB} MB — exceeds 10 MB processing limit`,
+        error: `File is ${sizeMB} MB — exceeds 20 MB processing limit`,
       })
     }
 
