@@ -1,5 +1,6 @@
 import { getSupabase } from './supabase'
 import type { ExtractionResult } from './types'
+import { enrichContacts } from './enrich'
 
 // ── Track what we populated and what we skipped ──────────────────────
 
@@ -8,6 +9,7 @@ interface SeedResult {
   fields_skipped: string[]
   rfi_questions_added: number
   contacts_added: number
+  contacts_enriched: number
 }
 
 // ── Seed opportunity fields (empty-only writes) ──────────────────────
@@ -123,8 +125,8 @@ async function seedRfiQuestions(
 async function seedContacts(
   opportunityId: string,
   contacts: ExtractionResult['client_contacts']
-): Promise<number> {
-  if (!contacts || contacts.length === 0) return 0
+): Promise<{ count: number; insertedIds: string[] }> {
+  if (!contacts || contacts.length === 0) return { count: 0, insertedIds: [] }
 
   // Get existing contacts to avoid dupes
   const { data: rawExistingContacts } = await getSupabase()
@@ -145,19 +147,21 @@ async function seedContacts(
       engagement_notes: c.notes ?? null,
     }))
 
-  if (newContacts.length === 0) return 0
+  if (newContacts.length === 0) return { count: 0, insertedIds: [] }
 
-  const { error } = await getSupabase()
+  const { data, error } = await getSupabase()
     .from('client_contacts')
     .insert(newContacts as any)
+    .select('id')
 
   if (error) {
     console.error(`[seed] Failed to insert contacts: ${error.message}`)
-    return 0
+    return { count: 0, insertedIds: [] }
   }
 
+  const insertedIds = ((data ?? []) as Array<{ id: string }>).map(r => r.id)
   console.log(`[seed] Inserted ${newContacts.length} contacts`)
-  return newContacts.length
+  return { count: newContacts.length, insertedIds }
 }
 
 // ── Seed assessment scores (AI-prefill only, never overwrite confirmed) ──
@@ -265,17 +269,31 @@ export async function seedFromExtraction(
 
   const oppResult = await seedOpportunity(opportunityId, extraction.opportunity)
   const rfiCount = await seedRfiQuestions(opportunityId, extraction.rfi_questions)
-  const contactCount = await seedContacts(opportunityId, extraction.client_contacts)
+  const contactResult = await seedContacts(opportunityId, extraction.client_contacts)
   const assessmentFields = await seedAssessmentScores(opportunityId, extraction.assessment_signals)
 
   // Write full extraction to the document record
   await writeExtractedIntel(documentId, extraction, 'complete')
 
+  // Auto-enrich newly inserted contacts
+  let contactsEnriched = 0
+  if (contactResult.insertedIds.length > 0) {
+    console.log(`[seed] Auto-enriching ${contactResult.insertedIds.length} new contacts...`)
+    try {
+      const enrichResult = await enrichContacts(contactResult.insertedIds, opportunityId)
+      contactsEnriched = enrichResult.enriched
+      console.log(`[seed] Enriched ${enrichResult.enriched} contacts (${enrichResult.failed} failed)`)
+    } catch (err) {
+      console.error(`[seed] Auto-enrich failed (non-blocking): ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
   const allPopulated = [
     ...oppResult.populated,
     ...assessmentFields,
+    ...(contactResult.count > 0 ? [`client_contacts (${contactResult.count})`] : []),
+    ...(contactsEnriched > 0 ? [`contacts_enriched (${contactsEnriched})`] : []),
     ...(rfiCount > 0 ? [`rfi_questions (${rfiCount})`] : []),
-    ...(contactCount > 0 ? [`client_contacts (${contactCount})`] : []),
   ]
 
   console.log(`[seed] Done. Populated: ${allPopulated.length} fields. Skipped: ${oppResult.skipped.length}`)
@@ -284,7 +302,8 @@ export async function seedFromExtraction(
     fields_populated: allPopulated,
     fields_skipped: oppResult.skipped,
     rfi_questions_added: rfiCount,
-    contacts_added: contactCount,
+    contacts_added: contactResult.count,
+    contacts_enriched: contactsEnriched,
   }
 }
 

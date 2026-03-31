@@ -52,5 +52,6 @@ export interface ProcessResponse {
   fields_skipped: string[]
   rfi_questions_added: number
   contacts_added: number
+  contacts_enriched: number
   error?: string
 }

@@ -125,6 +125,7 @@ async function handler(req: Request, res: Response) {
       fields_skipped: seedResult.fields_skipped,
       rfi_questions_added: seedResult.rfi_questions_added,
       contacts_added: seedResult.contacts_added,
+      contacts_enriched: seedResult.contacts_enriched,
       elapsed_ms: elapsed,
     })
 
